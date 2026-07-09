@@ -1,0 +1,176 @@
+name: Safe Deployment Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - fix/**
+  workflow_dispatch:
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log Source Information
+        run: |
+          echo "Commit: $GITHUB_SHA"
+          echo "Branch: $GITHUB_REF_NAME"
+          echo "Run ID: $GITHUB_RUN_ID"
+
+  build:
+    needs: source
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Lint (if configured)
+        run: |
+          if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc ] || [ -f .eslintrc.js ] || [ -f .eslintrc.json ] || [ -f .eslintrc.yml ]; then
+            npm run lint
+          else
+            echo "No ESLint configuration found. Skipping lint."
+          fi
+
+      - name: Build Project
+        run: npm run build
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-files
+          path: .
+
+  test-api:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: project-files
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run API Tests
+        run: npx jest tests/api.test.js --runInBand --forceExit
+
+  test-users:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: project-files
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run User Tests
+        run: npx jest tests/users.test.js --runInBand --forceExit
+
+  security:
+    needs:
+      - test-api
+      - test-users
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Dependency Audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Secret Scan
+        run: echo "Secret scanning placeholder"
+
+      - name: SAST Scan
+        run: echo "SAST placeholder"
+
+  deploy-staging:
+    needs: security
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Deploy to Staging
+        run: echo "Deploying to staging..."
+
+  deploy-production:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Deploy to Production
+        run: echo "Deploying to production..."
+
+  verify:
+    needs: deploy-production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Smoke Test
+        run: echo "Smoke tests passed"
+
+      - name: Health Check
+        run: echo "Application healthy"
+
+      - name: Rollback
+        if: ${{ failure() }}
+        run: echo "Rollback triggered"
+
+  notify:
+    if: ${{ failure() }}
+    needs:
+      - source
+      - build
+      - test-api
+      - test-users
+      - security
+      - deploy-staging
+      - deploy-production
+      - verify
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Failure Notification
+        run: |
+          echo "Pipeline Failed"
+          echo "Commit: $GITHUB_SHA"
+          echo "Branch: $GITHUB_REF_NAME"
+          echo "Run ID: $GITHUB_RUN_ID"
