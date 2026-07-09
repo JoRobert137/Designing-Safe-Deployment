@@ -1,0 +1,389 @@
+name: Deployment Pipeline
+
+on:
+  workflow_dispatch:
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log pipeline context
+        shell: bash
+        run: |
+          echo "Stage: source"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Print source metadata
+        shell: bash
+        run: |
+          echo "Commit SHA: $(git rev-parse HEAD)"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Verify checkout
+        shell: bash
+        run: |
+          if [ ! -d .git ]; then
+            echo "Checkout verification failed: .git directory missing"
+            exit 1
+          fi
+
+          if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            echo "Checkout verification failed: repository is not a Git work tree"
+            exit 1
+          fi
+
+          echo "Checkout completed successfully"
+
+      - name: Log stage status
+        if: always()
+        shell: bash
+        run: |
+          echo "Stage: source"
+          echo "Deployment status: ${{ job.status }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  build:
+    runs-on: ubuntu-latest
+    needs: source
+    steps:
+      - name: Log pipeline context
+        shell: bash
+        run: |
+          echo "Stage: build"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run build
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            dist/
+            build/
+          if-no-files-found: warn
+
+      - name: Log stage status
+        if: always()
+        shell: bash
+        run: |
+          echo "Stage: build"
+          echo "Deployment status: ${{ job.status }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Log pipeline context
+        shell: bash
+        run: |
+          echo "Stage: test"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: build-artifacts
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test -- --runInBand tests/users.test.js
+
+      - name: Run integration tests
+        run: npm test -- --runInBand tests/api.test.js
+
+      - name: Run coverage
+        run: npx jest --forceExit --coverage
+
+      - name: Log stage status
+        if: always()
+        shell: bash
+        run: |
+          echo "Stage: test"
+          echo "Deployment status: ${{ job.status }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  security:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Log pipeline context
+        shell: bash
+        run: |
+          echo "Stage: security"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+
+      - name: Secret scanning placeholder
+        run: echo "TODO: add secret scanning implementation"
+
+      - name: SAST placeholder
+        run: echo "TODO: add SAST implementation"
+
+      - name: Log stage status
+        if: always()
+        shell: bash
+        run: |
+          echo "Stage: security"
+          echo "Deployment status: ${{ job.status }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: security
+    environment: staging
+    steps:
+      - name: Log pipeline context
+        shell: bash
+        run: |
+          echo "Stage: deploy-staging"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Announce staging deployment
+        run: echo "Starting staging deployment"
+
+      - name: Simulate staging deployment
+        run: echo "Deploying application to staging environment"
+
+      - name: Confirm staging deployment
+        run: echo "Staging deployment completed successfully"
+
+      - name: Log stage status
+        if: always()
+        shell: bash
+        run: |
+          echo "Stage: deploy-staging"
+          echo "Deployment status: ${{ job.status }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref_name == 'main'
+    environment: production
+    steps:
+      - name: Log pipeline context
+        shell: bash
+        run: |
+          echo "Stage: deploy-production"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Announce production deployment
+        run: echo "Starting production deployment"
+
+      - name: Simulate production deployment
+        run: echo "Deploying application to production environment"
+
+      - name: Confirm production deployment
+        run: echo "Production deployment completed successfully"
+
+      - name: Log stage status
+        if: always()
+        shell: bash
+        run: |
+          echo "Stage: deploy-production"
+          echo "Deployment status: ${{ job.status }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  verify:
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    steps:
+      - name: Log pipeline context
+        shell: bash
+        run: |
+          echo "Stage: verify"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Print deployment metadata
+        shell: bash
+        run: |
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Run smoke tests
+        shell: bash
+        run: |
+          echo "Running production smoke tests"
+          echo "Smoke test simulation completed"
+
+      - name: Perform health check
+        shell: bash
+        id: health_check
+        run: |
+          if curl -fsS http://production.orion.internal/health; then
+            echo "health_status=healthy" >> "$GITHUB_OUTPUT"
+            echo "Health check passed"
+          else
+            echo "health_status=unhealthy" >> "$GITHUB_OUTPUT"
+            echo "Health check failed"
+          fi
+
+      - name: Determine rollback requirement
+        shell: bash
+        run: |
+          if [ "${{ steps.health_check.outputs.health_status }}" = "unhealthy" ]; then
+            echo "Rollback required"
+            exit 1
+          fi
+
+          echo "Rollback not required"
+
+      - name: Log stage status
+        if: always()
+        shell: bash
+        run: |
+          echo "Stage: verify"
+          echo "Deployment status: ${{ job.status }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  rollback:
+    runs-on: ubuntu-latest
+    needs: verify
+    if: failure()
+    steps:
+      - name: Log pipeline context
+        shell: bash
+        run: |
+          echo "Stage: rollback"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Announce rollback
+        run: echo "Verify failed, starting rollback"
+
+      - name: Simulate rollback
+        run: echo "Rolling back production deployment"
+
+      - name: Confirm rollback
+        run: echo "Rollback completed successfully"
+
+      - name: Log stage status
+        if: always()
+        shell: bash
+        run: |
+          echo "Stage: rollback"
+          echo "Deployment status: ${{ job.status }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  notification:
+    runs-on: ubuntu-latest
+    needs:
+      - source
+      - build
+      - test
+      - security
+      - deploy-staging
+      - deploy-production
+      - verify
+      - rollback
+    if: always()
+    steps:
+      - name: Log pipeline context
+        shell: bash
+        run: |
+          echo "Stage: notification"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Report workflow failure status
+        shell: bash
+        run: |
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Branch name: ${{ github.ref_name }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Notification sent for failed workflow path"
+
+      - name: Log stage status
+        if: always()
+        shell: bash
+        run: |
+          echo "Stage: notification"
+          echo "Deployment status: ${{ job.status }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
